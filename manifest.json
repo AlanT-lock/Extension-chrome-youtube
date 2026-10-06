@@ -21,8 +21,8 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["src/content/main.js"],
-      "run_at": "document_idle"
+      "js": ["src/content/youtube-ad-blocker.js"],
+      "run_at": "document_end"
     }
   ],
   "background": {
