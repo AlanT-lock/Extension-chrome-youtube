@@ -26,7 +26,7 @@
     }
   ],
   "background": {
-    "service_worker": "src/background/service-worker.js"
+    "service_worker": "service-worker.js"
   },
   "permissions": [
     "storage"
