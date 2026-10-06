@@ -1,7 +1,160 @@
 // YouTube Auto Ad Skip - Popup Script
+// Note: Popup scripts in Chrome extensions can use ES modules
 
-import { storage } from '../shared/storage.js';
-import { MESSAGE_TYPES, DEFAULT_SETTINGS, DEFAULT_STATS } from '../shared/constants.js';
+// Inline constants for popup to avoid module issues
+const MESSAGE_TYPES = {
+  TOGGLE_EXTENSION: 'TOGGLE_EXTENSION',
+  TOGGLE_AUTO_BLOCK: 'TOGGLE_AUTO_BLOCK',
+  TOGGLE_FALLBACK_SKIP: 'TOGGLE_FALLBACK_SKIP',
+  TOGGLE_DEBUG: 'TOGGLE_DEBUG',
+  RESET_STATS: 'RESET_STATS',
+  GET_STATE: 'GET_STATE',
+  GET_STATS: 'GET_STATS',
+  LOG_EVENT: 'LOG_EVENT'
+};
+
+const STORAGE_KEYS = {
+  SETTINGS: 'ytaas_settings',
+  STATS: 'ytaas_stats'
+};
+
+const DEFAULT_SETTINGS = {
+  extensionEnabled: true,
+  autoBlockEnabled: true,
+  useFallbackSkip: true,
+  debugMode: false
+};
+
+const DEFAULT_STATS = {
+  adsDetected: 0,
+  adsBlocked: 0,
+  fallbackSkips: 0,
+  failedAttempts: 0,
+  estimatedTimeSaved: 0
+};
+
+/**
+ * Simple storage manager for popup
+ * Uses chrome.storage.local directly
+ */
+class StorageManager {
+  constructor() {
+    this.cache = {
+      settings: null,
+      stats: null
+    };
+  }
+
+  async getSettings() {
+    if (this.cache.settings) {
+      return this.cache.settings;
+    }
+
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+      this.cache.settings = result[STORAGE_KEYS.SETTINGS] || DEFAULT_SETTINGS;
+      return this.cache.settings;
+    } catch (error) {
+      console.error('[Storage] Error getting settings:', error);
+      return DEFAULT_SETTINGS;
+    }
+  }
+
+  async saveSettings(settings) {
+    this.cache.settings = { ...this.cache.settings, ...settings };
+    
+    try {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.SETTINGS]: this.cache.settings
+      });
+    } catch (error) {
+      console.error('[Storage] Error saving settings:', error);
+    }
+  }
+
+  async getStats() {
+    if (this.cache.stats) {
+      return this.cache.stats;
+    }
+
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEYS.STATS);
+      this.cache.stats = result[STORAGE_KEYS.STATS] || DEFAULT_STATS;
+      return this.cache.stats;
+    } catch (error) {
+      console.error('[Storage] Error getting stats:', error);
+      return DEFAULT_STATS;
+    }
+  }
+
+  async saveStats(stats) {
+    this.cache.stats = { ...this.cache.stats, ...stats };
+    
+    try {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.STATS]: this.cache.stats
+      });
+    } catch (error) {
+      console.error('[Storage] Error saving stats:', error);
+    }
+  }
+
+  async incrementStat(key, value = 1) {
+    const stats = await this.getStats();
+    stats[key] = (stats[key] || 0) + value;
+    await this.saveStats(stats);
+    this.cache.stats = stats;
+    return stats;
+  }
+
+  async addTimeSaved(seconds) {
+    const stats = await this.getStats();
+    stats.estimatedTimeSaved = (stats.estimatedTimeSaved || 0) + seconds;
+    await this.saveStats(stats);
+    this.cache.stats = stats;
+    return stats;
+  }
+
+  async resetStats() {
+    this.cache.stats = DEFAULT_STATS;
+    
+    try {
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.STATS]: DEFAULT_STATS
+      });
+    } catch (error) {
+      console.error('[Storage] Error resetting stats:', error);
+    }
+  }
+
+  async getSetting(key) {
+    const settings = await this.getSettings();
+    return settings[key];
+  }
+
+  async setSetting(key, value) {
+    const settings = await this.getSettings();
+    settings[key] = value;
+    await this.saveSettings(settings);
+  }
+
+  async toggleSetting(key) {
+    const current = await this.getSetting(key);
+    const newValue = typeof current === 'boolean' ? !current : !Boolean(current);
+    await this.setSetting(key, newValue);
+    return newValue;
+  }
+
+  clearCache() {
+    this.cache = {
+      settings: null,
+      stats: null
+    };
+  }
+}
+
+// Storage instance
+const storage = new StorageManager();
 
 /**
  * Popup controller for the extension
@@ -50,7 +203,7 @@ class PopupController {
       // Update UI
       await this.updateUI();
       
-      // Request current state from content script
+      // Request current state from background
       this.requestState();
       
       // Set up periodic state updates
@@ -144,7 +297,7 @@ class PopupController {
       // Save to storage
       await storage.setSetting(settingKey, value);
       
-      // Send message to content scripts
+      // Send message to background script
       const messageType = this.getMessageTypeForSetting(settingKey);
       await this.sendMessage({ type: messageType, value });
       
@@ -197,7 +350,7 @@ class PopupController {
       // Update UI
       await this.updateUI();
       
-      // Send message to content scripts
+      // Send message to background script
       await this.sendMessage({ type: MESSAGE_TYPES.RESET_STATS });
       
       console.log('[Popup] Statistics reset');
@@ -293,7 +446,7 @@ class PopupController {
   }
 
   /**
-   * Request current state from content script
+   * Request current state from background script
    */
   requestState() {
     this.sendMessage({ type: MESSAGE_TYPES.GET_STATE })
@@ -348,34 +501,6 @@ class PopupController {
         reject(error);
       }
     });
-  }
-
-  /**
-   * Send message to content script in current tab
-   * @param {Object} message - Message to send
-   * @returns {Promise<Object>}
-   */
-  async sendMessageToContentScript(message) {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
-      if (tab && tab.id) {
-        return new Promise((resolve, reject) => {
-          chrome.tabs.sendMessage(tab.id, message, response => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
-          });
-        });
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('[Popup] Error sending message to content script:', error);
-      return null;
-    }
   }
 }
 

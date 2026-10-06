@@ -1,7 +1,7 @@
 // YouTube Auto Ad Skip - Ad Actions Module
 
 import { logger } from './logger.js';
-import { storage } from '../shared/storage.js';
+import { storage } from './storage.js';
 import { SELECTORS, TIMEOUTS, AD_SESSION_LIMITS, STATES } from '../shared/constants.js';
 import {
   isVisible,

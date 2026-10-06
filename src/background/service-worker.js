@@ -1,6 +1,40 @@
 // YouTube Auto Ad Skip - Background Service Worker
+// Note: Service workers in Chrome extensions don't support ES modules natively
+// So we inline the constants here
 
-import { MESSAGE_TYPES, STORAGE_KEYS, DEFAULT_SETTINGS, DEFAULT_STATS } from '../shared/constants.js';
+/**
+ * Shared Constants - Inlined for service worker compatibility
+ */
+const MESSAGE_TYPES = {
+  TOGGLE_EXTENSION: 'TOGGLE_EXTENSION',
+  TOGGLE_AUTO_BLOCK: 'TOGGLE_AUTO_BLOCK',
+  TOGGLE_FALLBACK_SKIP: 'TOGGLE_FALLBACK_SKIP',
+  TOGGLE_DEBUG: 'TOGGLE_DEBUG',
+  RESET_STATS: 'RESET_STATS',
+  GET_STATE: 'GET_STATE',
+  GET_STATS: 'GET_STATS',
+  LOG_EVENT: 'LOG_EVENT'
+};
+
+const STORAGE_KEYS = {
+  SETTINGS: 'ytaas_settings',
+  STATS: 'ytaas_stats'
+};
+
+const DEFAULT_SETTINGS = {
+  extensionEnabled: true,
+  autoBlockEnabled: true,
+  useFallbackSkip: true,
+  debugMode: false
+};
+
+const DEFAULT_STATS = {
+  adsDetected: 0,
+  adsBlocked: 0,
+  fallbackSkips: 0,
+  failedAttempts: 0,
+  estimatedTimeSaved: 0
+};
 
 /**
  * Service Worker for background tasks
@@ -134,9 +168,4 @@ async function forwardMessageToContentScripts(message) {
  */
 function getExtensionState() {
   return isExtensionEnabled;
-}
-
-// Export for testing
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { handleMessage, getExtensionState };
 }

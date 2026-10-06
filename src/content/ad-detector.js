@@ -1,7 +1,7 @@
 // YouTube Auto Ad Skip - Ad Detector Module
 
 import { logger } from './logger.js';
-import { storage } from '../shared/storage.js';
+import { storage } from './storage.js';
 import {
   AD_DETECTION_SCORES,
   CONFIDENCE_THRESHOLDS,

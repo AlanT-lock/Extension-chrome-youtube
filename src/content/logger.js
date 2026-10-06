@@ -1,6 +1,35 @@
 // YouTube Auto Ad Skip - Logger Module
+// Note: Content scripts can use ES modules
 
-import { storage } from '../shared/storage.js';
+// Inline constants for logger to avoid module issues
+const STORAGE_KEYS = {
+  SETTINGS: 'ytaas_settings',
+  STATS: 'ytaas_stats'
+};
+
+const DEFAULT_SETTINGS = {
+  extensionEnabled: true,
+  autoBlockEnabled: true,
+  useFallbackSkip: true,
+  debugMode: false
+};
+
+/**
+ * Simple storage wrapper for logger
+ */
+class SimpleStorage {
+  async getSettings() {
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+      return result[STORAGE_KEYS.SETTINGS] || DEFAULT_SETTINGS;
+    } catch (error) {
+      console.error('[SimpleStorage] Error getting settings:', error);
+      return DEFAULT_SETTINGS;
+    }
+  }
+}
+
+const simpleStorage = new SimpleStorage();
 
 /**
  * Logger class for extension debugging and logging
@@ -29,7 +58,7 @@ class Logger {
    */
   async initialize() {
     try {
-      const settings = await storage.getSettings();
+      const settings = await simpleStorage.getSettings();
       this.enabled = settings.extensionEnabled;
       this.debugMode = settings.debugMode;
     } catch (error) {
@@ -42,7 +71,7 @@ class Logger {
    */
   async updateSettings() {
     try {
-      const settings = await storage.getSettings();
+      const settings = await simpleStorage.getSettings();
       this.enabled = settings.extensionEnabled;
       this.debugMode = settings.debugMode;
     } catch (error) {

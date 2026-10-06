@@ -1,7 +1,9 @@
 // YouTube Auto Ad Skip - Main Content Script
+// Note: Content scripts in Chrome extensions can use ES modules
 
+// Import all required modules
 import { logger } from './logger.js';
-import { storage } from '../shared/storage.js';
+import { storage } from './storage.js';
 import { adDetector } from './ad-detector.js';
 import { adActions } from './ad-actions.js';
 import { STATES, TIMEOUTS, MESSAGE_TYPES } from '../shared/constants.js';
