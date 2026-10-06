@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Auto Ad Skip</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>YouTube Auto Ad Skip</h1>
+      <p class="subtitle">Automatically blocks YouTube ads</p>
+    </header>
+
+    <main class="main">
+      <!-- Toggle Section -->
+      <section class="section">
+        <h2 class="section-title">Extension Status</h2>
+        <div class="toggle-container">
+          <label class="toggle-switch">
+            <input type="checkbox" id="extensionToggle" class="toggle-input">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Extension Enabled</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Settings Section -->
+      <section class="section">
+        <h2 class="section-title">Settings</h2>
+        <div class="settings-list">
+          <div class="setting-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoBlockToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">Auto Block Ads</span>
+            </label>
+            <span class="setting-description">Automatically click Info → Block Ad</span>
+          </div>
+          
+          <div class="setting-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="fallbackToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">Use Skip Fallback</span>
+            </label>
+            <span class="setting-description">Click "Skip Ad" if Block Ad is not available</span>
+          </div>
+          
+          <div class="setting-item">
+            <label class="toggle-switch">
+              <input type="checkbox" id="debugToggle" class="toggle-input">
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">Debug Mode</span>
+            </label>
+            <span class="setting-description">Show detailed logs in console</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Statistics Section -->
+      <section class="section">
+        <h2 class="section-title">Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" id="adsDetected">0</div>
+            <div class="stat-label">Ads Detected</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-value" id="adsBlocked">0</div>
+            <div class="stat-label">Ads Blocked</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-value" id="fallbackSkips">0</div>
+            <div class="stat-label">Fallback Skips</div>
+          </div>
+          
+          <div class="stat-card">
+            <div class="stat-value" id="failedAttempts">0</div>
+            <div class="stat-label">Failed Attempts</div>
+          </div>
+          
+          <div class="stat-card time-saved">
+            <div class="stat-value" id="timeSaved">0 min 0 sec</div>
+            <div class="stat-label">Time Saved</div>
+          </div>
+        </div>
+        
+        <div class="stats-actions">
+          <button id="resetStats" class="button button-secondary">Reset Statistics</button>
+        </div>
+      </section>
+
+      <!-- Status Section -->
+      <section class="section">
+        <h2 class="section-title">Current Status</h2>
+        <div class="status-container">
+          <div class="status-item">
+            <span class="status-label">Extension:</span>
+            <span class="status-value" id="extensionStatus">Loading...</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">State:</span>
+            <span class="status-value" id="currentState">Unknown</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p class="version">v1.0.0</p>
+      <p class="copyright">© 2024 YouTube Auto Ad Skip</p>
+    </footer>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
