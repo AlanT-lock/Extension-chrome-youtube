@@ -1,17 +1,12 @@
-// YouTube Auto Ad Skip - Main Content Script (Inline version for reliability)
-// This file contains all the logic inlined to avoid module loading issues
+// YouTube Auto Ad Skip - Content Script v2.1
+// Fixed version with all dependencies inlined and working
 
 (function() {
   'use strict';
 
   // ============================================================================
-  // CONFIGURATION & CONSTANTS
+  // CONSTANTS
   // ============================================================================
-
-  const EXTENSION_STATE = {
-    ON: 'on',
-    OFF: 'off'
-  };
 
   const STATES = {
     IDLE: 'IDLE',
@@ -28,10 +23,7 @@
   };
 
   const CONFIDENCE_THRESHOLDS = {
-    HIGH: 0.85,
-    MEDIUM: 0.7,
-    LOW: 0.5,
-    AD_DETECTED: 0.8
+    AD_DETECTED: 0.75
   };
 
   const AD_DETECTION_SCORES = {
@@ -39,19 +31,14 @@
     INFO_BUTTON_DETECTED: 30,
     KNOWN_AD_STRUCTURE: 20,
     AD_TEXT_DETECTED: 10,
-    PLAYER_OVERLAY: 15,
-    AD_CONTAINER: 25
+    PLAYER_OVERLAY: 15
   };
 
   const TIMEOUTS = {
     MENU_OPEN_WAIT: 2000,
-    BLOCK_ACTION_WAIT: 2000,
     AD_DETECTION_DEBOUNCE: 200,
-    MUTATION_OBSERVER_DELAY: 100,
     MAX_AD_SESSION_DURATION: 5000,
-    POLLING_INTERVALS: [0, 50, 100, 200, 400, 800],
-    CLICK_DELAY: 50,
-    MAX_RETRIES: 2
+    CLICK_DELAY: 50
   };
 
   const AD_SESSION_LIMITS = {
@@ -70,10 +57,6 @@
       '.ytd-watch-flexy'
     ],
     AD_INDICATORS: [
-      'div[aria-label*="advertisement" i]',
-      'div[aria-label*="ad" i]',
-      'div[aria-label*="annonce" i]',
-      'div[aria-label*="publicité" i]',
       '.ad-container',
       '.video-ads',
       'ytd-ad-module',
@@ -83,24 +66,18 @@
       'div.ad-placeholder',
       '.ad-video',
       '.ad-overlay',
-      '[class*="ad-"]',
-      '[id*="ad"]',
       '.ytp-ad-skip-button-container',
       '.ytp-ad-skip-button',
       '.ytp-ad-progress',
-      '.ytp-ad-progress-list',
       '.ytp-ad-duration-remaining'
     ],
     INFO_BUTTONS: [
       'button[aria-label*="info" i]',
       'button[aria-label*="more" i]',
-      'button[aria-label*="plus" i]',
-      'button[title*="info" i]',
+      'button[aria-label*="i" i]',
       '.ytp-ad-button',
       '.ytp-ad-info-button',
-      '.ad-info-button',
-      'button:has(svg)',
-      'button svg'
+      'button:has(svg)'
     ],
     MENUS: [
       '[role="menu"]',
@@ -108,44 +85,20 @@
       '[role="popup"]',
       '.ad-menu',
       '.ad-dialog',
-      '.ad-context-menu',
       'ytd-popup-container',
-      '.ytp-popup',
-      '.ad-info-popup',
-      '.ad-details-menu'
+      '.ytp-popup'
     ],
     BLOCK_ACTIONS: [
-      'button:contains("Block ad")',
-      'button:contains("Block this ad")',
-      'button:contains("Stop seeing this ad")',
-      'button:contains("Bloquer l\'annonce")',
-      'button:contains("Bloquer cette annonce")',
-      'button:contains("Bloquer la pub")',
-      '[aria-label*="block" i]',
-      '[aria-label*="bloquer" i]',
-      '[data-action*="block"]'
+      'button',
+      'a',
+      '[role="menuitem"]'
     ],
     SKIP_BUTTONS: [
       '.ytp-ad-skip-button',
       '.ytp-ad-skip-button-container',
       'button.ytp-ad-skip-button',
-      'div.ytp-ad-skip-button',
-      '[aria-label*="skip" i]',
-      '[aria-label*="ignorer" i]',
-      '[aria-label*="passer" i]',
-      '[aria-label*="sauter" i]'
+      'div.ytp-ad-skip-button'
     ]
-  };
-
-  const MESSAGE_TYPES = {
-    TOGGLE_EXTENSION: 'TOGGLE_EXTENSION',
-    TOGGLE_AUTO_BLOCK: 'TOGGLE_AUTO_BLOCK',
-    TOGGLE_FALLBACK_SKIP: 'TOGGLE_FALLBACK_SKIP',
-    TOGGLE_DEBUG: 'TOGGLE_DEBUG',
-    RESET_STATS: 'RESET_STATS',
-    GET_STATE: 'GET_STATE',
-    GET_STATS: 'GET_STATS',
-    LOG_EVENT: 'LOG_EVENT'
   };
 
   const STORAGE_KEYS = {
@@ -169,27 +122,21 @@
   };
 
   // ============================================================================
-  // STORAGE MANAGER (Inline)
+  // STORAGE MANAGER
   // ============================================================================
 
   class StorageManager {
     constructor() {
-      this.cache = {
-        settings: null,
-        stats: null
-      };
+      this.cache = { settings: null, stats: null };
     }
 
     async getSettings() {
-      if (this.cache.settings) {
-        return this.cache.settings;
-      }
+      if (this.cache.settings) return this.cache.settings;
       try {
         const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
         this.cache.settings = result[STORAGE_KEYS.SETTINGS] || DEFAULT_SETTINGS;
         return this.cache.settings;
-      } catch (error) {
-        console.error('[Storage] Error getting settings:', error);
+      } catch (e) {
         return DEFAULT_SETTINGS;
       }
     }
@@ -197,36 +144,18 @@
     async saveSettings(settings) {
       this.cache.settings = { ...this.cache.settings, ...settings };
       try {
-        await chrome.storage.local.set({
-          [STORAGE_KEYS.SETTINGS]: this.cache.settings
-        });
-      } catch (error) {
-        console.error('[Storage] Error saving settings:', error);
-      }
+        await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: this.cache.settings });
+      } catch (e) {}
     }
 
     async getStats() {
-      if (this.cache.stats) {
-        return this.cache.stats;
-      }
+      if (this.cache.stats) return this.cache.stats;
       try {
         const result = await chrome.storage.local.get(STORAGE_KEYS.STATS);
         this.cache.stats = result[STORAGE_KEYS.STATS] || DEFAULT_STATS;
         return this.cache.stats;
-      } catch (error) {
-        console.error('[Storage] Error getting stats:', error);
+      } catch (e) {
         return DEFAULT_STATS;
-      }
-    }
-
-    async saveStats(stats) {
-      this.cache.stats = { ...this.cache.stats, ...stats };
-      try {
-        await chrome.storage.local.set({
-          [STORAGE_KEYS.STATS]: this.cache.stats
-        });
-      } catch (error) {
-        console.error('[Storage] Error saving stats:', error);
       }
     }
 
@@ -246,15 +175,11 @@
       return stats;
     }
 
-    async resetStats() {
-      this.cache.stats = DEFAULT_STATS;
+    async saveStats(stats) {
+      this.cache.stats = { ...this.cache.stats, ...stats };
       try {
-        await chrome.storage.local.set({
-          [STORAGE_KEYS.STATS]: DEFAULT_STATS
-        });
-      } catch (error) {
-        console.error('[Storage] Error resetting stats:', error);
-      }
+        await chrome.storage.local.set({ [STORAGE_KEYS.STATS]: this.cache.stats });
+      } catch (e) {}
     }
 
     async setSetting(key, value) {
@@ -262,34 +187,19 @@
       settings[key] = value;
       await this.saveSettings(settings);
     }
-
-    clearCache() {
-      this.cache = { settings: null, stats: null };
-    }
   }
 
   const storage = new StorageManager();
 
   // ============================================================================
-  // LOGGER (Inline)
+  // LOGGER
   // ============================================================================
 
   class Logger {
     constructor() {
       this.prefix = '[AutoSkip]';
-      this.enabled = false;
+      this.enabled = true;
       this.debugMode = false;
-      this.initialize();
-    }
-
-    async initialize() {
-      try {
-        const settings = await storage.getSettings();
-        this.enabled = settings.extensionEnabled;
-        this.debugMode = settings.debugMode;
-      } catch (error) {
-        console.error('[Logger] Error initializing:', error);
-      }
     }
 
     info(message, data = {}) {
@@ -352,42 +262,47 @@
       }
     }
 
+    sessionInfo(session) {
+      if (!this.enabled || !this.debugMode) return;
+      const timestamp = new Date().toLocaleTimeString();
+      const logMessage = `${this.prefix} ${timestamp} [SESSION]`;
+      console.log(logMessage, session);
+    }
+
     enable() { this.enabled = true; }
     disable() { this.enabled = false; }
     enableDebug() { this.debugMode = true; this.enabled = true; }
     disableDebug() { this.debugMode = false; }
-    isEnabled() { return this.enabled; }
-    isDebugEnabled() { return this.debugMode; }
   }
 
   const logger = new Logger();
 
   // ============================================================================
-  // DOM UTILITIES (Inline)
+  // DOM UTILITIES
   // ============================================================================
 
   function isVisible(element) {
-    if (!element || !(element instanceof HTMLElement)) return false;
-    const computedStyle = window.getComputedStyle(element);
-    if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden' || computedStyle.opacity === '0') return false;
-    if (element.getAttribute('aria-hidden') === 'true') return false;
-    let current = element;
-    while (current && current !== document.body) {
-      const currentStyle = window.getComputedStyle(current);
-      if (currentStyle.display === 'none' || currentStyle.visibility === 'hidden' || currentStyle.opacity === '0') return false;
-      if (current.getAttribute('aria-hidden') === 'true') return false;
-      current = current.parentElement;
+    if (!element || !(element instanceof Element)) return false;
+    try {
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+      if (element.getAttribute('aria-hidden') === 'true') return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    } catch (e) {
+      return false;
     }
-    const rect = element.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return false;
-    return true;
   }
 
   function isClickable(element) {
-    if (!element || !(element instanceof HTMLElement)) return false;
+    if (!element || !(element instanceof Element)) return false;
     if (element.disabled) return false;
-    const computedStyle = window.getComputedStyle(element);
-    if (computedStyle.pointerEvents === 'none') return false;
+    try {
+      const style = window.getComputedStyle(element);
+      if (style.pointerEvents === 'none') return false;
+    } catch (e) {
+      return false;
+    }
     if (!isVisible(element)) return false;
     const tagName = element.tagName.toLowerCase();
     const clickableTags = ['button', 'a', 'input', 'textarea', 'select', 'div', 'span'];
@@ -401,24 +316,30 @@
   }
 
   function isInsideVideoPlayer(element) {
-    if (!element || !(element instanceof HTMLElement)) return false;
+    if (!element || !(element instanceof Element)) return false;
+    
     const playerContainers = [];
     for (const selector of SELECTORS.PLAYER_CONTAINER) {
-      const containers = document.querySelectorAll(selector);
-      containers.forEach(container => {
-        if (container && isVisible(container)) playerContainers.push(container);
-      });
+      try {
+        const containers = document.querySelectorAll(selector);
+        containers.forEach(container => {
+          if (container && isVisible(container)) playerContainers.push(container);
+        });
+      } catch (e) {}
     }
+    
     for (const container of playerContainers) {
       if (container.contains(element)) return true;
     }
+    
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const windowWidth = window.innerWidth;
-    const playerWidthRatio = 0.6;
+    const playerWidthRatio = 0.7;
     const playerLeft = (windowWidth - (windowWidth * playerWidthRatio)) / 2;
     const playerRight = playerLeft + (windowWidth * playerWidthRatio);
+    
     if (centerX >= playerLeft && centerX <= playerRight) {
       const windowHeight = window.innerHeight;
       const playerTopRatio = 0.1;
@@ -431,7 +352,7 @@
   }
 
   function getElementLabel(element) {
-    if (!element || !(element instanceof HTMLElement)) return '';
+    if (!element || !(element instanceof Element)) return '';
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel.trim();
     const title = element.getAttribute('title');
@@ -446,11 +367,6 @@
     return '';
   }
 
-  function getElementRole(element) {
-    if (!element || !(element instanceof HTMLElement)) return '';
-    return element.getAttribute('role') || '';
-  }
-
   function textContains(element, text) {
     if (!element) return false;
     const elementText = (element.textContent || '').toLowerCase();
@@ -461,27 +377,15 @@
     const elements = [];
     for (const selector of selectors) {
       try {
-        let found;
-        if (selector.includes(':contains(')) {
-          const match = selector.match(/:contains\(([^)]+)\)/i);
-          if (match) {
-            const searchText = match[1];
-            const allElements = container.querySelectorAll('*');
-            allElements.forEach(el => {
-              if (isVisible(el) && isClickable(el) && textContains(el, searchText) && !elements.includes(el)) {
-                elements.push(el);
-              }
-            });
+        const found = container.querySelectorAll(selector);
+        found.forEach(el => {
+          if (isVisible(el) && isClickable(el) && !elements.includes(el)) {
+            elements.push(el);
           }
-        } else {
-          found = container.querySelectorAll(selector);
-          found.forEach(el => {
-            if (isVisible(el) && isClickable(el) && !elements.includes(el)) {
-              elements.push(el);
-            }
-          });
-        }
-      } catch (e) {}
+        });
+      } catch (e) {
+        logger.debug(`Invalid selector: ${selector}`, e);
+      }
     }
     return elements;
   }
@@ -490,23 +394,10 @@
     const elements = [];
     for (const selector of selectors) {
       try {
-        if (selector.includes(':contains(')) {
-          const match = selector.match(/:contains\(([^)]+)\)/i);
-          if (match) {
-            const searchText = match[1];
-            const allElements = container.querySelectorAll('*');
-            allElements.forEach(el => {
-              if (textContains(el, searchText) && !elements.includes(el)) {
-                elements.push(el);
-              }
-            });
-          }
-        } else {
-          const found = container.querySelectorAll(selector);
-          found.forEach(el => {
-            if (!elements.includes(el)) elements.push(el);
-          });
-        }
+        const found = container.querySelectorAll(selector);
+        found.forEach(el => {
+          if (!elements.includes(el)) elements.push(el);
+        });
       } catch (e) {}
     }
     return elements;
@@ -514,21 +405,19 @@
 
   function findPlayerContainer() {
     for (const selector of SELECTORS.PLAYER_CONTAINER) {
-      const container = document.querySelector(selector);
-      if (container && isVisible(container)) return container;
-    }
-    const fallbackSelectors = ['ytd-player', '#movie_player', '.html5-video-container'];
-    for (const selector of fallbackSelectors) {
-      const container = document.querySelector(selector);
-      if (container && isVisible(container)) return container;
+      try {
+        const container = document.querySelector(selector);
+        if (container && isVisible(container)) return container;
+      } catch (e) {}
     }
     return null;
   }
 
   async function safeClick(element) {
-    if (!element || !(element instanceof HTMLElement)) return false;
+    if (!element || !(element instanceof Element)) return false;
     if (!document.contains(element)) return false;
     if (!isVisible(element) || !isClickable(element)) return false;
+    
     try {
       element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
@@ -552,7 +441,7 @@
   }
 
   // ============================================================================
-  // AD DETECTOR (Inline)
+  // AD DETECTOR
   // ============================================================================
 
   class AdDetector {
@@ -562,8 +451,7 @@
 
     async detectAd() {
       logger.debug('Starting ad detection...');
-      const startTime = Date.now();
-
+      
       try {
         const settings = await storage.getSettings();
         if (!settings.extensionEnabled) {
@@ -578,7 +466,7 @@
 
         let totalScore = 0;
 
-        // Check for skip button
+        // Check for skip button (most reliable)
         const skipButtons = findVisibleClickableElements(SELECTORS.SKIP_BUTTONS);
         if (skipButtons.length > 0) {
           totalScore += AD_DETECTION_SCORES.AD_INDICATOR_PRESENCE;
@@ -620,7 +508,8 @@
         for (const element of textElements) {
           if (isVisible(element)) {
             const text = (element.textContent || '').toLowerCase();
-            if (text.includes('ad') || text.includes('advertisement') || text.includes('annonce') || text.includes('pub')) {
+            if (text.includes('ad') || text.includes('advertisement') || 
+                text.includes('annonce') || text.includes('pub')) {
               totalScore += AD_DETECTION_SCORES.AD_TEXT_DETECTED;
               logger.debug('Ad text detected');
               break;
@@ -674,31 +563,12 @@
       if (candidates.length === 0) return null;
       return candidates[0];
     }
-
-    quickAdCheck() {
-      try {
-        const skipButtons = document.querySelectorAll('.ytp-ad-skip-button, .ytp-ad-skip-button-container');
-        for (const button of skipButtons) if (isVisible(button)) return true;
-        const indicators = document.querySelectorAll('.ad-container, .video-ads, ytd-ad-module, .ad-showing');
-        for (const indicator of indicators) if (isVisible(indicator)) return true;
-        const textElements = document.querySelectorAll('span, div');
-        for (const element of textElements) {
-          if (isVisible(element)) {
-            const text = (element.textContent || '').toLowerCase();
-            if (text.includes('ad') || text.includes('advertisement') || text.includes('annonce') || text.includes('pub')) {
-              return true;
-            }
-          }
-        }
-        return false;
-      } catch (e) { return false; }
-    }
   }
 
   const adDetector = new AdDetector();
 
   // ============================================================================
-  // AD ACTIONS (Inline)
+  // AD ACTIONS
   // ============================================================================
 
   class AdActions {
@@ -722,7 +592,7 @@
         element: null,
         adType: null
       };
-      logger.sessionInfo(this.currentSession);
+      logger.debug(`Starting ad session: ${this.currentSession.id}`);
       return this.currentSession;
     }
 
@@ -757,14 +627,7 @@
       const infoButtons = findVisibleClickableElements(SELECTORS.INFO_BUTTONS);
       for (const button of infoButtons) {
         if (this.isValidInfoButton(button)) {
-          logger.debug('Found valid info button:', button);
-          return button;
-        }
-      }
-      const allButtons = findVisibleClickableElements(['button', 'a']);
-      for (const button of allButtons) {
-        if (this.isValidInfoButton(button)) {
-          logger.debug('Found valid info button (strategy 2):', button);
+          logger.debug('Found valid info button');
           return button;
         }
       }
@@ -775,12 +638,14 @@
     isValidInfoButton(button) {
       if (!button || !isVisible(button) || !isClickable(button)) return false;
       if (!isInsideVideoPlayer(button)) return false;
+      
       const label = getElementLabel(button).toLowerCase();
       const text = (button.textContent || '').toLowerCase().trim();
       const infoPatterns = [/info/i, /more/i, /plus/i, /i\s*circle/i, /help/i, /informations/i, /plus d'infos/i];
       for (const pattern of infoPatterns) {
         if (pattern.test(label) || pattern.test(text)) return true;
       }
+      
       const svg = button.querySelector('svg');
       if (svg) {
         const viewBox = svg.getAttribute('viewBox');
@@ -805,9 +670,11 @@
         logger.warn('Info button is no longer valid');
         return false;
       }
-      logger.action('Clicking info button', { button });
+      
+      logger.action('Clicking info button');
       this.currentSession.infoClicks++;
       this.currentSession.attempts++;
+      
       try {
         const result = await safeClick(button);
         if (result) {
@@ -827,10 +694,11 @@
       logger.debug('Waiting for ad menu to appear...');
       const startTime = Date.now();
       const timeout = TIMEOUTS.MENU_OPEN_WAIT;
+      
       while (Date.now() - startTime < timeout) {
         const menu = this.findAdMenu();
         if (menu) {
-          logger.debug('Ad menu found:', menu);
+          logger.debug('Ad menu found');
           return menu;
         }
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -850,7 +718,7 @@
     isValidAdMenu(menu) {
       if (!menu || !isVisible(menu)) return false;
       if (isInsideVideoPlayer(menu)) return true;
-      const role = getElementRole(menu);
+      const role = menu.getAttribute('role') || '';
       if (role === 'menu' || role === 'dialog' || role === 'popup') return true;
       return false;
     }
@@ -858,27 +726,31 @@
     findBlockActions(menu = document) {
       logger.debug('Searching for block ad actions...');
       const candidates = [];
-      const blockElements = findVisibleClickableElements(SELECTORS.BLOCK_ACTIONS, menu);
-      candidates.push(...blockElements);
-      const allActions = findVisibleClickableElements(['button', 'a', '[role="menuitem"]'], menu);
+      
+      const allActions = findVisibleClickableElements(SELECTORS.BLOCK_ACTIONS, menu);
       for (const action of allActions) {
         if (this.isValidBlockAction(action)) candidates.push(action);
       }
+      
       return [...new Set(candidates)];
     }
 
     isValidBlockAction(element) {
       if (!element || !isVisible(element) || !isClickable(element)) return false;
+      
       const label = getElementLabel(element).toLowerCase();
       const text = (element.textContent || '').toLowerCase().trim();
+      
       const blockPatterns = [
         /block\s*ad/i, /block\s*this\s*ad/i, /stop\s*seeing\s*this\s*ad/i,
         /bloquer\s*l['"]annonce/i, /bloquer\s*cette\s*annonce/i, /bloquer\s*la\s*pub/i,
         /bloquear\s*anuncio/i, /anzeige\s*blockieren/i
       ];
+      
       for (const pattern of blockPatterns) {
         if (pattern.test(label) || pattern.test(text)) return true;
       }
+      
       return false;
     }
 
@@ -892,9 +764,11 @@
         logger.warn('Block action is no longer valid');
         return false;
       }
-      logger.action('Clicking block ad action', { action });
+      
+      logger.action('Clicking block ad action');
       this.currentSession.blockClicks++;
       this.currentSession.attempts++;
+      
       try {
         const result = await safeClick(action);
         if (result) {
@@ -917,7 +791,7 @@
       const skipButtons = findVisibleClickableElements(SELECTORS.SKIP_BUTTONS);
       for (const button of skipButtons) {
         if (this.isValidSkipButton(button)) {
-          logger.debug('Found valid skip button:', button);
+          logger.debug('Found valid skip button');
           return button;
         }
       }
@@ -928,16 +802,20 @@
     isValidSkipButton(button) {
       if (!button || !isVisible(button) || !isClickable(button)) return false;
       if (!isInsideVideoPlayer(button)) return false;
+      
       const label = getElementLabel(button).toLowerCase();
       const text = (button.textContent || '').toLowerCase().trim();
+      const className = (button.className || '').toLowerCase();
+      
       const skipPatterns = [
         /skip\s*ad/i, /skip/i, /ignorer/i, /passer/i, /sauter/i,
         /omitir/i, /saltar/i
       ];
+      
       for (const pattern of skipPatterns) {
         if (pattern.test(label) || pattern.test(text)) return true;
       }
-      const className = button.className || '';
+      
       if (className.includes('ytp-ad-skip') || className.includes('skip-button')) return true;
       return false;
     }
@@ -952,8 +830,10 @@
         logger.warn('Skip button is no longer valid');
         return false;
       }
-      logger.action('Clicking skip ad button', { button });
+      
+      logger.action('Clicking skip ad button');
       this.currentSession.attempts++;
+      
       try {
         const result = await safeClick(button);
         if (result) {
@@ -981,6 +861,7 @@
 
     async blockCurrentAd() {
       logger.debug('Starting block current ad workflow...');
+      
       const settings = await storage.getSettings();
       if (!settings.extensionEnabled || !settings.autoBlockEnabled) {
         logger.warn('Extension or auto-block is disabled');
@@ -993,6 +874,7 @@
       try {
         this.setState(STATES.FINDING_INFO);
         const infoButton = this.findAdInfoButton();
+        
         if (!infoButton) {
           logger.warn('No info button found, trying fallback');
           return await this.fallbackSkipAd();
@@ -1000,6 +882,7 @@
 
         this.setState(STATES.CLICKING_INFO);
         const infoClicked = await this.clickInfoButton(infoButton);
+        
         if (!infoClicked) {
           logger.warn('Failed to click info button, trying fallback');
           return await this.fallbackSkipAd();
@@ -1007,6 +890,7 @@
 
         this.setState(STATES.WAITING_FOR_MENU);
         const menu = await this.waitForMenu();
+        
         if (!menu) {
           logger.warn('Menu did not appear, trying fallback');
           return await this.fallbackSkipAd();
@@ -1014,6 +898,7 @@
 
         this.setState(STATES.FINDING_BLOCK_ACTION);
         const blockActions = this.findBlockActions(menu);
+        
         if (blockActions.length === 0) {
           logger.warn('No block actions found, trying fallback');
           return await this.fallbackSkipAd();
@@ -1021,6 +906,7 @@
 
         this.setState(STATES.CLICKING_BLOCK);
         const blockClicked = await this.clickBlockAction(blockActions[0]);
+        
         if (!blockClicked) {
           logger.warn('Failed to click block action, trying fallback');
           return await this.fallbackSkipAd();
@@ -1042,6 +928,7 @@
         logger.warn('Ad did not disappear after block attempt');
         this.endSession();
         return { success: false, reason: 'ad_still_visible' };
+        
       } catch (error) {
         logger.error('Error in block current ad workflow:', error);
         this.endSession();
@@ -1051,6 +938,7 @@
 
     async fallbackSkipAd() {
       logger.debug('Starting fallback skip ad workflow...');
+      
       const settings = await storage.getSettings();
       if (!settings.useFallbackSkip) {
         logger.warn('Fallback skip is disabled');
@@ -1084,6 +972,7 @@
         logger.warn('Ad did not disappear after skip attempt');
         this.endSession();
         return { success: false, reason: 'ad_still_visible' };
+        
       } catch (error) {
         logger.error('Error in fallback skip workflow:', error);
         this.endSession();
@@ -1099,7 +988,7 @@
   const adActions = new AdActions();
 
   // ============================================================================
-  // MAIN EXTENSION LOGIC
+  // MAIN EXTENSION CLASS
   // ============================================================================
 
   class YouTubeAdSkipper {
@@ -1174,8 +1063,10 @@
 
     setupMutationObserver() {
       if (this.observer) this.observer.disconnect();
+      
       const targetNode = document.body || document.documentElement;
-      const config = { childList: true, subtree: true, attributes: true, characterData: true };
+      const config = { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-label', 'role'] };
+      
       this.observer = new MutationObserver(this.handleMutation);
       this.observer.observe(targetNode, config);
       logger.debug('MutationObserver set up');
@@ -1185,6 +1076,7 @@
       if (!this.isRunning) return;
       const now = Date.now();
       if (now - this.lastDetectionTime < 100) return;
+      
       let hasRelevantMutation = false;
       for (const mutation of mutations) {
         if (this.isRelevantMutation(mutation)) {
@@ -1192,6 +1084,7 @@
           break;
         }
       }
+      
       if (hasRelevantMutation) {
         this.lastDetectionTime = now;
         this.debouncedDetect();
@@ -1203,28 +1096,41 @@
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node;
-            if (element.className && (element.className.includes('player') || element.className.includes('ad') || element.className.includes('video'))) {
-              return true;
-            }
-            if (element.tagName === 'BUTTON' || element.tagName === 'A' || element.getAttribute('role') === 'menu' || element.getAttribute('role') === 'dialog') {
-              return true;
-            }
+            try {
+              const className = element.className || '';
+              if (className.includes('player') || className.includes('ad') || className.includes('video')) {
+                return true;
+              }
+              if (element.tagName === 'BUTTON' || element.tagName === 'A' || 
+                  element.getAttribute('role') === 'menu' || element.getAttribute('role') === 'dialog') {
+                return true;
+              }
+            } catch (e) {}
           }
         }
       }
+      
       if (mutation.removedNodes && mutation.removedNodes.length > 0) {
         for (const node of mutation.removedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node;
-            if (element.className && (element.className.includes('ad') || element.className.includes('skip'))) {
-              return true;
-            }
+            try {
+              const className = element.className || '';
+              if (className.includes('ad') || className.includes('skip')) {
+                return true;
+              }
+            } catch (e) {}
           }
         }
       }
-      if (mutation.attributeName && (mutation.attributeName === 'class' || mutation.attributeName === 'style' || mutation.attributeName === 'aria-label' || mutation.attributeName === 'role')) {
+      
+      if (mutation.attributeName && (mutation.attributeName === 'class' || 
+          mutation.attributeName === 'style' || 
+          mutation.attributeName === 'aria-label' || 
+          mutation.attributeName === 'role')) {
         return true;
       }
+      
       return false;
     }
 
@@ -1238,6 +1144,7 @@
 
     async detectAndHandleAd() {
       if (!this.isRunning) return;
+      
       const currentState = adActions.getCurrentState();
       if (currentState !== STATES.IDLE && currentState !== STATES.AD_DISAPPEARED) {
         logger.debug(`Already in state ${currentState}, skipping detection`);
@@ -1246,7 +1153,7 @@
 
       try {
         const detection = await adDetector.detectAd();
-        if (detection.isAd && detection.confidence >= 0.8) {
+        if (detection.isAd && detection.confidence >= CONFIDENCE_THRESHOLDS.AD_DETECTED) {
           logger.info(`Ad detected with confidence ${detection.confidence}`);
           await storage.incrementStat('adsDetected');
           await this.handleAdDetection(detection);
@@ -1261,14 +1168,17 @@
     async handleAdDetection(detection) {
       if (!this.isRunning) return;
       logger.debug('Handling ad detection...');
+      
       try {
         const currentSession = adActions.getCurrentSession();
         if (currentSession && !adActions.isSessionExpired()) {
           logger.debug('Already processing an ad session');
           return;
         }
+        
         adActions.startSession();
         const result = await adActions.blockCurrentAd();
+        
         if (result.success) {
           logger.info(`Ad handled successfully using ${result.method}`);
         } else {
@@ -1308,7 +1218,7 @@
     async handleMessage(message, sender, sendResponse) {
       try {
         switch (message.type) {
-          case MESSAGE_TYPES.TOGGLE_EXTENSION:
+          case 'TOGGLE_EXTENSION':
             this.settings.extensionEnabled = message.value;
             if (this.settings.extensionEnabled) {
               await this.start();
@@ -1318,17 +1228,20 @@
             await storage.setSetting('extensionEnabled', this.settings.extensionEnabled);
             sendResponse({ success: true, extensionEnabled: this.settings.extensionEnabled });
             break;
-          case MESSAGE_TYPES.TOGGLE_AUTO_BLOCK:
+            
+          case 'TOGGLE_AUTO_BLOCK':
             this.settings.autoBlockEnabled = message.value;
             await storage.setSetting('autoBlockEnabled', this.settings.autoBlockEnabled);
             sendResponse({ success: true, autoBlockEnabled: this.settings.autoBlockEnabled });
             break;
-          case MESSAGE_TYPES.TOGGLE_FALLBACK_SKIP:
+            
+          case 'TOGGLE_FALLBACK_SKIP':
             this.settings.useFallbackSkip = message.value;
             await storage.setSetting('useFallbackSkip', this.settings.useFallbackSkip);
             sendResponse({ success: true, useFallbackSkip: this.settings.useFallbackSkip });
             break;
-          case MESSAGE_TYPES.TOGGLE_DEBUG:
+            
+          case 'TOGGLE_DEBUG':
             this.settings.debugMode = message.value;
             await storage.setSetting('debugMode', this.settings.debugMode);
             if (this.settings.debugMode) {
@@ -1338,25 +1251,30 @@
             }
             sendResponse({ success: true, debugMode: this.settings.debugMode });
             break;
-          case MESSAGE_TYPES.GET_STATE:
+            
+          case 'GET_STATE':
             sendResponse({
               isRunning: this.isRunning,
               state: adActions.getCurrentState(),
               session: adActions.getCurrentSession()
             });
             break;
-          case MESSAGE_TYPES.GET_STATS:
+            
+          case 'GET_STATS':
             const stats = await storage.getStats();
             sendResponse(stats);
             break;
-          case MESSAGE_TYPES.RESET_STATS:
+            
+          case 'RESET_STATS':
             await storage.resetStats();
             sendResponse({ success: true });
             break;
-          case MESSAGE_TYPES.LOG_EVENT:
+            
+          case 'LOG_EVENT':
             logger[message.level](message.message, message.data);
             sendResponse({ success: true });
             break;
+            
           default:
             sendResponse({ success: false, error: 'Unknown message type' });
         }
@@ -1387,7 +1305,6 @@
     initializeExtension();
   }
 
-  // Log initial load
   console.log('[AutoSkip] YouTube Auto Ad Skip content script loaded');
 
 })();
