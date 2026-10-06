@@ -1,11 +1,11 @@
-// YouTube Auto Ad Skip - Content Script v2.1
-// Fixed version with all dependencies inlined and working
+// YouTube Auto Ad Skip - Content Script v3.0
+// Updated for YouTube 2026 with iframe support and robust selectors
 
 (function() {
   'use strict';
 
   // ============================================================================
-  // CONSTANTS
+  // CONSTANTS - YouTube 2026 Updated
   // ============================================================================
 
   const STATES = {
@@ -23,39 +23,51 @@
   };
 
   const CONFIDENCE_THRESHOLDS = {
-    AD_DETECTED: 0.75
+    AD_DETECTED: 0.7,
+    HIGH_CONFIDENCE: 0.9
   };
 
   const AD_DETECTION_SCORES = {
-    AD_INDICATOR_PRESENCE: 40,
-    INFO_BUTTON_DETECTED: 30,
-    KNOWN_AD_STRUCTURE: 20,
-    AD_TEXT_DETECTED: 10,
-    PLAYER_OVERLAY: 15
+    AD_INDICATOR_PRESENCE: 50,
+    INFO_BUTTON_DETECTED: 40,
+    KNOWN_AD_STRUCTURE: 30,
+    AD_TEXT_DETECTED: 20,
+    PLAYER_OVERLAY: 25,
+    SKIP_BUTTON_PRESENT: 45,
+    AD_CONTAINER_VISIBLE: 55
   };
 
   const TIMEOUTS = {
-    MENU_OPEN_WAIT: 2000,
-    AD_DETECTION_DEBOUNCE: 200,
-    MAX_AD_SESSION_DURATION: 5000,
-    CLICK_DELAY: 50
+    MENU_OPEN_WAIT: 3000,
+    AD_DETECTION_DEBOUNCE: 150,
+    MAX_AD_SESSION_DURATION: 6000,
+    CLICK_DELAY: 100,
+    IFRAME_CHECK_INTERVAL: 500,
+    MAX_IFRAME_WAIT: 2000
   };
 
   const AD_SESSION_LIMITS = {
-    MAX_INFO_CLICKS: 2,
-    MAX_BLOCK_CLICKS: 2,
-    MAX_ATTEMPTS: 3,
-    MAX_DURATION_MS: 5000
+    MAX_INFO_CLICKS: 3,
+    MAX_BLOCK_CLICKS: 3,
+    MAX_ATTEMPTS: 5,
+    MAX_DURATION_MS: 6000
   };
 
+  // YouTube 2026 Updated Selectors
   const SELECTORS = {
     PLAYER_CONTAINER: [
       'ytd-player',
       '#movie_player',
       '.html5-video-container',
       '[data-context-item-id]',
-      '.ytd-watch-flexy'
+      '.ytd-watch-flexy',
+      '#player',
+      'div[class*="player"]',
+      'ytd-rich-item-renderer',
+      '#player-container',
+      '.player-container'
     ],
+    
     AD_INDICATORS: [
       '.ad-container',
       '.video-ads',
@@ -69,16 +81,46 @@
       '.ytp-ad-skip-button-container',
       '.ytp-ad-skip-button',
       '.ytp-ad-progress',
-      '.ytp-ad-duration-remaining'
+      '.ytp-ad-duration-remaining',
+      'ytd-instream-video-ad',
+      'ytd-ad',
+      '.ad-banner',
+      '[class*="-ad-"]',
+      '[class*="ad-"]',
+      '[id*="ad"]',
+      '.ad-slate',
+      '.ad-interrupting-video',
+      'tp-yt-paper-button[aria-label*="ad" i]',
+      'yt-icon-button[aria-label*="ad" i]'
     ],
+    
     INFO_BUTTONS: [
+      // YouTube 2026 - New info button patterns
+      'yt-icon-button[aria-label*="info" i]',
+      'yt-icon-button[aria-label*="about this ad" i]',
+      'yt-icon-button[aria-label*="more" i]',
+      'yt-icon-button[aria-label*="i" i]',
       'button[aria-label*="info" i]',
+      'button[aria-label*="about this ad" i]',
       'button[aria-label*="more" i]',
       'button[aria-label*="i" i]',
+      'button[aria-label*="plus d\'infos" i]',
+      'button[aria-label*="informations" i]',
+      'button[aria-label*="more info" i]',
+      'button[aria-label*="ad info" i]',
       '.ytp-ad-button',
       '.ytp-ad-info-button',
-      'button:has(svg)'
+      '.ad-info-button',
+      'button:has(yt-icon)',
+      'button:has(svg)',
+      'tp-yt-paper-button:has(yt-icon)',
+      'tp-yt-paper-button:has(svg)',
+      // Position-based: bottom-left of player
+      'yt-icon-button[class*="info"]',
+      'button[class*="info"]',
+      'button[class*="ad-info"]'
     ],
+    
     MENUS: [
       '[role="menu"]',
       '[role="dialog"]',
@@ -86,18 +128,87 @@
       '.ad-menu',
       '.ad-dialog',
       'ytd-popup-container',
-      '.ytp-popup'
+      '.ytp-popup',
+      'tp-yt-paper-listbox',
+      'ytd-menu-popup-renderer',
+      'ytd-popup',
+      '[aria-label*="menu" i]',
+      '[aria-label*="options" i]',
+      '.menu-popup',
+      '.dialog-container'
     ],
+    
     BLOCK_ACTIONS: [
       'button',
       'a',
-      '[role="menuitem"]'
+      '[role="menuitem"]',
+      'yt-formatted-string',
+      'tp-yt-paper-item',
+      'ytd-menu-navigation-item-renderer',
+      'ytd-button-renderer',
+      '[role="option"]'
     ],
+    
     SKIP_BUTTONS: [
+      // YouTube 2026 - Updated skip button patterns
       '.ytp-ad-skip-button',
       '.ytp-ad-skip-button-container',
+      '.ytp-ad-skip-button-modern',
       'button.ytp-ad-skip-button',
-      'div.ytp-ad-skip-button'
+      'div.ytp-ad-skip-button',
+      'tp-yt-paper-button[aria-label*="skip" i]',
+      'tp-yt-paper-button[aria-label*="ignorer" i]',
+      'button[aria-label*="skip" i]',
+      'button[aria-label*="ignorer" i]',
+      'button[aria-label*="passer" i]',
+      'button[aria-label*="sauter" i]',
+      'button[aria-label*="omitir" i]',
+      'button[aria-label*="saltar" i]',
+      '[class*="skip-button"]',
+      '[class*="ad-skip"]',
+      'div[class*="skip"]',
+      'button.skip-button'
+    ],
+    
+    // Iframe support
+    IFRAME_SELECTORS: [
+      'iframe[src*="youtube.com"]',
+      'iframe[src*="googleads"]',
+      'iframe[src*="doubleclick"]',
+      'iframe[class*="ad"]',
+      'iframe[id*="ad"]'
+    ]
+  };
+
+  // Multi-language text patterns for YouTube 2026
+  const TEXT_PATTERNS = {
+    AD_INDICATORS: [
+      /ad/i, /advertisement/i, /annonce/i, /pub/i, /publicit[ée]/i,
+      /anuncio/i, /werbung/i, /pubblicit[àa]/i, /reclame/i, /広告/i,
+      /광고/i, /广告/i
+    ],
+    
+    INFO_BUTTON: [
+      /info/i, /more/i, /plus/i, /i\s*circle/i, /help/i, /informations?/i,
+      /plus d'infos/i, /más información/i, /mehr infos/i, /più informazioni/i,
+      /about this ad/i, /à propos de cette annonce/i, /sobre este anuncio/i,
+      /über diese anzeige/i, /informazioni su questo annuncio/i
+    ],
+    
+    BLOCK_ACTIONS: [
+      /block\s*ad/i, /block\s*this\s*ad/i, /stop\s*seeing\s*this\s*ad/i,
+      /bloquer\s*l['"]annonce/i, /bloquer\s*cette\s*annonce/i, /bloquer\s*la\s*pub/i,
+      /bloquear\s*anuncio/i, /anzeige\s*blockieren/i, /blocca\s*annuncio/i,
+      /no\s*show\s*this\s*ad/i, /not\s*interested/i, /pas\s*int[ée]ress[ée]/i,
+      /no\s*me\s*interesa/i, /nicht\s*interessiert/i, /non\s*interessato/i,
+      /remove\s*ad/i, /supprimer\s*l['"]annonce/i, /eliminar\s*anuncio/i,
+      /entfernen/i, /rimuovi/i
+    ],
+    
+    SKIP_BUTTON: [
+      /skip\s*ad/i, /skip/i, /ignorer/i, /passer/i, /sauter/i,
+      /omitir/i, /saltar/i, /überspringen/i, /saltare/i,
+      /skip\s*this\s*ad/i, /passer\s*cette\s*annonce/i
     ]
   };
 
@@ -186,6 +297,13 @@
       const settings = await this.getSettings();
       settings[key] = value;
       await this.saveSettings(settings);
+    }
+
+    async resetStats() {
+      this.cache.stats = DEFAULT_STATS;
+      try {
+        await chrome.storage.local.set({ [STORAGE_KEYS.STATS]: DEFAULT_STATS });
+      } catch (e) {}
     }
   }
 
@@ -278,8 +396,35 @@
   const logger = new Logger();
 
   // ============================================================================
-  // DOM UTILITIES
+  // DOM UTILITIES - Enhanced with null checks
   // ============================================================================
+
+  function safeGetClassName(element) {
+    if (!element || !(element instanceof Element)) return '';
+    try {
+      return (element.className || '').toLowerCase();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function safeGetAttribute(element, attr) {
+    if (!element || !(element instanceof Element)) return '';
+    try {
+      return (element.getAttribute(attr) || '').toLowerCase();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function safeGetText(element) {
+    if (!element || !(element instanceof Element)) return '';
+    try {
+      return (element.textContent || '').toLowerCase().trim();
+    } catch (e) {
+      return '';
+    }
+  }
 
   function isVisible(element) {
     if (!element || !(element instanceof Element)) return false;
@@ -287,6 +432,7 @@
       const style = window.getComputedStyle(element);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
       if (element.getAttribute('aria-hidden') === 'true') return false;
+      if (element.hidden) return false;
       const rect = element.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0;
     } catch (e) {
@@ -304,11 +450,11 @@
       return false;
     }
     if (!isVisible(element)) return false;
-    const tagName = element.tagName.toLowerCase();
-    const clickableTags = ['button', 'a', 'input', 'textarea', 'select', 'div', 'span'];
+    const tagName = (element.tagName || '').toLowerCase();
+    const clickableTags = ['button', 'a', 'input', 'textarea', 'select', 'div', 'span', 'yt-formatted-string', 'tp-yt-paper-button', 'yt-icon-button'];
     if (!clickableTags.includes(tagName)) return false;
     if (tagName === 'input') {
-      const type = element.type.toLowerCase();
+      const type = (element.type || '').toLowerCase();
       const clickableTypes = ['button', 'submit', 'reset', 'checkbox', 'radio'];
       if (!clickableTypes.includes(type)) return false;
     }
@@ -329,9 +475,12 @@
     }
     
     for (const container of playerContainers) {
-      if (container.contains(element)) return true;
+      try {
+        if (container.contains(element)) return true;
+      } catch (e) {}
     }
     
+    // Position-based fallback
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -353,24 +502,32 @@
 
   function getElementLabel(element) {
     if (!element || !(element instanceof Element)) return '';
-    const ariaLabel = element.getAttribute('aria-label');
-    if (ariaLabel) return ariaLabel.trim();
-    const title = element.getAttribute('title');
-    if (title) return title.trim();
-    const text = element.textContent?.trim() || '';
+    const ariaLabel = safeGetAttribute(element, 'aria-label');
+    if (ariaLabel) return ariaLabel;
+    const title = safeGetAttribute(element, 'title');
+    if (title) return title;
+    const text = safeGetText(element);
     if (text) return text;
     const svg = element.querySelector('svg');
     if (svg) {
-      const svgLabel = svg.getAttribute('aria-label');
-      if (svgLabel) return svgLabel.trim();
+      const svgLabel = safeGetAttribute(svg, 'aria-label');
+      if (svgLabel) return svgLabel;
     }
     return '';
   }
 
   function textContains(element, text) {
     if (!element) return false;
-    const elementText = (element.textContent || '').toLowerCase();
+    const elementText = safeGetText(element);
     return elementText.includes(text.toLowerCase());
+  }
+
+  function matchesAnyPattern(text, patterns) {
+    if (!text) return false;
+    for (const pattern of patterns) {
+      if (pattern.test(text)) return true;
+    }
+    return false;
   }
 
   function findVisibleClickableElements(selectors, container = document) {
@@ -413,20 +570,69 @@
     return null;
   }
 
-  async function safeClick(element) {
+  // Iframe support functions
+  function getAccessibleIframes() {
+    const iframes = [];
+    try {
+      const allIframes = document.querySelectorAll('iframe');
+      allIframes.forEach(iframe => {
+        try {
+          // Only access same-origin iframes
+          if (iframe.contentDocument && iframe.contentDocument.body) {
+            iframes.push(iframe);
+          }
+        } catch (e) {
+          // Cross-origin iframes will throw security errors
+        }
+      });
+    } catch (e) {}
+    return iframes;
+  }
+
+  function findInIframes(selectors, checkFn) {
+    const results = [];
+    const iframes = getAccessibleIframes();
+    
+    for (const iframe of iframes) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (!iframeDoc) continue;
+        
+        const elements = findVisibleClickableElements(selectors, iframeDoc);
+        for (const el of elements) {
+          if (checkFn && checkFn(el, iframe)) {
+            results.push({ element: el, iframe });
+          } else if (!checkFn) {
+            results.push({ element: el, iframe });
+          }
+        }
+      } catch (e) {
+        // Skip cross-origin iframes
+      }
+    }
+    return results;
+  }
+
+  async function safeClick(element, retryCount = 2) {
     if (!element || !(element instanceof Element)) return false;
     if (!document.contains(element)) return false;
     if (!isVisible(element) || !isClickable(element)) return false;
     
     try {
       element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
       const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
       element.dispatchEvent(clickEvent);
       if (!clickEvent.defaultPrevented) element.click();
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, TIMEOUTS.CLICK_DELAY));
       return true;
     } catch (error) {
       logger.error('Error clicking element:', error);
+      if (retryCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return await safeClick(element, retryCount - 1);
+      }
       return false;
     }
   }
@@ -441,7 +647,7 @@
   }
 
   // ============================================================================
-  // AD DETECTOR
+  // AD DETECTOR - Enhanced for YouTube 2026
   // ============================================================================
 
   class AdDetector {
@@ -465,12 +671,14 @@
         }
 
         let totalScore = 0;
+        const detectionElements = [];
 
-        // Check for skip button (most reliable)
+        // Check for skip button (most reliable indicator)
         const skipButtons = findVisibleClickableElements(SELECTORS.SKIP_BUTTONS);
         if (skipButtons.length > 0) {
-          totalScore += AD_DETECTION_SCORES.AD_INDICATOR_PRESENCE;
+          totalScore += AD_DETECTION_SCORES.SKIP_BUTTON_PRESENT;
           logger.debug('Skip button detected');
+          detectionElements.push(...skipButtons);
         }
 
         // Check for ad indicators
@@ -479,6 +687,7 @@
           if (isVisible(indicator)) {
             totalScore += AD_DETECTION_SCORES.AD_INDICATOR_PRESENCE;
             logger.debug('Ad indicators detected');
+            detectionElements.push(indicator);
             break;
           }
         }
@@ -489,32 +698,52 @@
           if (isInsideVideoPlayer(button)) {
             totalScore += AD_DETECTION_SCORES.INFO_BUTTON_DETECTED;
             logger.debug('Info button detected');
+            detectionElements.push(button);
             break;
           }
         }
 
         // Check for ad structure
-        const adContainers = player.querySelectorAll('.ad-container, .video-ads, ytd-ad-module, .ad-showing');
+        const adContainers = player.querySelectorAll('.ad-container, .video-ads, ytd-ad-module, .ad-showing, .ad-interrupting, ytd-ad, ytd-instream-video-ad');
         for (const container of adContainers) {
           if (isVisible(container)) {
             totalScore += AD_DETECTION_SCORES.KNOWN_AD_STRUCTURE;
             logger.debug('Ad structure detected');
+            detectionElements.push(container);
             break;
           }
         }
 
         // Check for ad text
-        const textElements = player.querySelectorAll('span, div, a, p');
+        const textElements = player.querySelectorAll('span, div, a, p, button, yt-formatted-string');
         for (const element of textElements) {
           if (isVisible(element)) {
-            const text = (element.textContent || '').toLowerCase();
-            if (text.includes('ad') || text.includes('advertisement') || 
-                text.includes('annonce') || text.includes('pub')) {
+            const text = safeGetText(element);
+            if (matchesAnyPattern(text, TEXT_PATTERNS.AD_INDICATORS)) {
               totalScore += AD_DETECTION_SCORES.AD_TEXT_DETECTED;
               logger.debug('Ad text detected');
+              detectionElements.push(element);
               break;
             }
           }
+        }
+
+        // Check for player overlay
+        const overlays = player.querySelectorAll('[class*="overlay"], [class*="ad-overlay"]');
+        for (const overlay of overlays) {
+          if (isVisible(overlay)) {
+            totalScore += AD_DETECTION_SCORES.PLAYER_OVERLAY;
+            logger.debug('Player overlay detected');
+            detectionElements.push(overlay);
+            break;
+          }
+        }
+
+        // Check in iframes
+        const iframeResults = findInIframes(SELECTORS.AD_INDICATORS);
+        if (iframeResults.length > 0) {
+          totalScore += AD_DETECTION_SCORES.AD_CONTAINER_VISIBLE;
+          logger.debug('Ad indicators found in iframes');
         }
 
         const confidence = this.calculateConfidence(totalScore);
@@ -540,7 +769,8 @@
       const maxPossibleScore = AD_DETECTION_SCORES.AD_INDICATOR_PRESENCE * 2 +
         AD_DETECTION_SCORES.INFO_BUTTON_DETECTED +
         AD_DETECTION_SCORES.KNOWN_AD_STRUCTURE +
-        AD_DETECTION_SCORES.AD_TEXT_DETECTED;
+        AD_DETECTION_SCORES.AD_TEXT_DETECTED +
+        AD_DETECTION_SCORES.PLAYER_OVERLAY;
       const normalized = Math.min(score / maxPossibleScore, 1);
       return 1 / (1 + Math.exp(-10 * (normalized - 0.5)));
     }
@@ -568,7 +798,7 @@
   const adDetector = new AdDetector();
 
   // ============================================================================
-  // AD ACTIONS
+  // AD ACTIONS - Enhanced for YouTube 2026
   // ============================================================================
 
   class AdActions {
@@ -592,6 +822,7 @@
         element: null,
         adType: null
       };
+      logger.sessionInfo(this.currentSession);
       logger.debug(`Starting ad session: ${this.currentSession.id}`);
       return this.currentSession;
     }
@@ -624,13 +855,26 @@
 
     findAdInfoButton() {
       logger.debug('Searching for ad info button...');
+      
+      // First, search in main document
       const infoButtons = findVisibleClickableElements(SELECTORS.INFO_BUTTONS);
       for (const button of infoButtons) {
         if (this.isValidInfoButton(button)) {
-          logger.debug('Found valid info button');
+          logger.debug('Found valid info button in main document');
           return button;
         }
       }
+      
+      // Search in iframes
+      const iframeResults = findInIframes(SELECTORS.INFO_BUTTONS, (el, iframe) => {
+        return this.isValidInfoButton(el);
+      });
+      
+      if (iframeResults.length > 0) {
+        logger.debug('Found valid info button in iframe');
+        return iframeResults[0].element;
+      }
+      
       logger.debug('No valid info button found');
       return null;
     }
@@ -639,24 +883,29 @@
       if (!button || !isVisible(button) || !isClickable(button)) return false;
       if (!isInsideVideoPlayer(button)) return false;
       
-      const label = getElementLabel(button).toLowerCase();
-      const text = (button.textContent || '').toLowerCase().trim();
-      const infoPatterns = [/info/i, /more/i, /plus/i, /i\s*circle/i, /help/i, /informations/i, /plus d'infos/i];
-      for (const pattern of infoPatterns) {
-        if (pattern.test(label) || pattern.test(text)) return true;
-      }
+      const label = getElementLabel(button);
+      const text = safeGetText(button);
       
+      if (matchesAnyPattern(label, TEXT_PATTERNS.INFO_BUTTON)) return true;
+      if (matchesAnyPattern(text, TEXT_PATTERNS.INFO_BUTTON)) return true;
+      
+      // Check for info icon (i in circle)
       const svg = button.querySelector('svg');
       if (svg) {
-        const viewBox = svg.getAttribute('viewBox');
+        const viewBox = safeGetAttribute(svg, 'viewBox');
         if (viewBox === '0 0 24 24') {
           const paths = svg.querySelectorAll('path');
           for (const path of paths) {
-            const d = path.getAttribute('d') || '';
-            if (d.includes('M12 2') || d.includes('M12,2') || d.includes('12 2')) return true;
+            const d = (path.getAttribute('d') || '').toLowerCase();
+            if (d.includes('m12 2') || d.includes('m12,2') || d.includes('12 2')) return true;
           }
         }
       }
+      
+      // Check class names
+      const className = safeGetClassName(button);
+      if (className.includes('info') || className.includes('ad-info')) return true;
+      
       return false;
     }
 
@@ -701,25 +950,40 @@
           logger.debug('Ad menu found');
           return menu;
         }
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       logger.warn('Ad menu did not appear within timeout');
       return null;
     }
 
     findAdMenu() {
+      // Search in main document
       const menus = findAllMatchingElements(SELECTORS.MENUS);
       for (const menu of menus) {
         if (this.isValidAdMenu(menu)) return menu;
       }
+      
+      // Search in iframes
+      const iframeResults = findInIframes(SELECTORS.MENUS, (el) => {
+        return this.isValidAdMenu(el);
+      });
+      
+      if (iframeResults.length > 0) {
+        return iframeResults[0].element;
+      }
+      
       return null;
     }
 
     isValidAdMenu(menu) {
       if (!menu || !isVisible(menu)) return false;
       if (isInsideVideoPlayer(menu)) return true;
-      const role = menu.getAttribute('role') || '';
+      const role = safeGetAttribute(menu, 'role');
       if (role === 'menu' || role === 'dialog' || role === 'popup') return true;
+      
+      const className = safeGetClassName(menu);
+      if (className.includes('menu') || className.includes('popup') || className.includes('dialog')) return true;
+      
       return false;
     }
 
@@ -727,9 +991,19 @@
       logger.debug('Searching for block ad actions...');
       const candidates = [];
       
+      // Search in provided menu or document
       const allActions = findVisibleClickableElements(SELECTORS.BLOCK_ACTIONS, menu);
       for (const action of allActions) {
         if (this.isValidBlockAction(action)) candidates.push(action);
+      }
+      
+      // Also search in iframes
+      const iframeResults = findInIframes(SELECTORS.BLOCK_ACTIONS, (el) => {
+        return this.isValidBlockAction(el);
+      });
+      
+      for (const result of iframeResults) {
+        candidates.push(result.element);
       }
       
       return [...new Set(candidates)];
@@ -738,18 +1012,14 @@
     isValidBlockAction(element) {
       if (!element || !isVisible(element) || !isClickable(element)) return false;
       
-      const label = getElementLabel(element).toLowerCase();
-      const text = (element.textContent || '').toLowerCase().trim();
+      const label = getElementLabel(element);
+      const text = safeGetText(element);
       
-      const blockPatterns = [
-        /block\s*ad/i, /block\s*this\s*ad/i, /stop\s*seeing\s*this\s*ad/i,
-        /bloquer\s*l['"]annonce/i, /bloquer\s*cette\s*annonce/i, /bloquer\s*la\s*pub/i,
-        /bloquear\s*anuncio/i, /anzeige\s*blockieren/i
-      ];
+      if (matchesAnyPattern(label, TEXT_PATTERNS.BLOCK_ACTIONS)) return true;
+      if (matchesAnyPattern(text, TEXT_PATTERNS.BLOCK_ACTIONS)) return true;
       
-      for (const pattern of blockPatterns) {
-        if (pattern.test(label) || pattern.test(text)) return true;
-      }
+      const className = safeGetClassName(element);
+      if (className.includes('block') || className.includes('remove') || className.includes('not-interested')) return true;
       
       return false;
     }
@@ -788,13 +1058,26 @@
 
     findSkipButton() {
       logger.debug('Searching for skip ad button...');
+      
+      // Search in main document
       const skipButtons = findVisibleClickableElements(SELECTORS.SKIP_BUTTONS);
       for (const button of skipButtons) {
         if (this.isValidSkipButton(button)) {
-          logger.debug('Found valid skip button');
+          logger.debug('Found valid skip button in main document');
           return button;
         }
       }
+      
+      // Search in iframes
+      const iframeResults = findInIframes(SELECTORS.SKIP_BUTTONS, (el) => {
+        return this.isValidSkipButton(el);
+      });
+      
+      if (iframeResults.length > 0) {
+        logger.debug('Found valid skip button in iframe');
+        return iframeResults[0].element;
+      }
+      
       logger.debug('No valid skip button found');
       return null;
     }
@@ -803,20 +1086,15 @@
       if (!button || !isVisible(button) || !isClickable(button)) return false;
       if (!isInsideVideoPlayer(button)) return false;
       
-      const label = getElementLabel(button).toLowerCase();
-      const text = (button.textContent || '').toLowerCase().trim();
-      const className = (button.className || '').toLowerCase();
+      const label = getElementLabel(button);
+      const text = safeGetText(button);
       
-      const skipPatterns = [
-        /skip\s*ad/i, /skip/i, /ignorer/i, /passer/i, /sauter/i,
-        /omitir/i, /saltar/i
-      ];
+      if (matchesAnyPattern(label, TEXT_PATTERNS.SKIP_BUTTON)) return true;
+      if (matchesAnyPattern(text, TEXT_PATTERNS.SKIP_BUTTON)) return true;
       
-      for (const pattern of skipPatterns) {
-        if (pattern.test(label) || pattern.test(text)) return true;
-      }
+      const className = safeGetClassName(button);
+      if (className.includes('skip') || className.includes('ytp-ad-skip')) return true;
       
-      if (className.includes('ytp-ad-skip') || className.includes('skip-button')) return true;
       return false;
     }
 
@@ -850,12 +1128,23 @@
     }
 
     async hasAdDisappeared() {
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       const adIndicators = findAllMatchingElements(SELECTORS.AD_INDICATORS);
       const visibleIndicators = adIndicators.filter(el => isVisible(el));
       if (visibleIndicators.length > 0) return false;
+      
       const skipButtons = findVisibleClickableElements(SELECTORS.SKIP_BUTTONS);
       if (skipButtons.length > 0) return false;
+      
+      const infoButtons = findVisibleClickableElements(SELECTORS.INFO_BUTTONS);
+      if (infoButtons.length > 0) {
+        // Check if any info button is still associated with an ad
+        for (const btn of infoButtons) {
+          if (isInsideVideoPlayer(btn)) return false;
+        }
+      }
+      
       return true;
     }
 
@@ -913,7 +1202,7 @@
         }
 
         this.setState(STATES.WAITING_FOR_RESULT);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 800));
 
         const adGone = await this.hasAdDisappeared();
         if (adGone) {
@@ -1092,46 +1381,52 @@
     }
 
     isRelevantMutation(mutation) {
-      if (mutation.addedNodes && mutation.addedNodes.length > 0) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node;
-            try {
-              const className = element.className || '';
-              if (className.includes('player') || className.includes('ad') || className.includes('video')) {
-                return true;
-              }
-              if (element.tagName === 'BUTTON' || element.tagName === 'A' || 
-                  element.getAttribute('role') === 'menu' || element.getAttribute('role') === 'dialog') {
-                return true;
-              }
-            } catch (e) {}
+      try {
+        if (mutation.addedNodes && mutation.addedNodes.length > 0) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node;
+              try {
+                const className = safeGetClassName(element);
+                if (className.includes('player') || className.includes('ad') || className.includes('video')) {
+                  return true;
+                }
+                const tagName = (element.tagName || '').toLowerCase();
+                if (tagName === 'button' || tagName === 'a' || 
+                    safeGetAttribute(element, 'role') === 'menu' || 
+                    safeGetAttribute(element, 'role') === 'dialog') {
+                  return true;
+                }
+              } catch (e) {}
+            }
           }
         }
-      }
-      
-      if (mutation.removedNodes && mutation.removedNodes.length > 0) {
-        for (const node of mutation.removedNodes) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node;
-            try {
-              const className = element.className || '';
-              if (className.includes('ad') || className.includes('skip')) {
-                return true;
-              }
-            } catch (e) {}
+        
+        if (mutation.removedNodes && mutation.removedNodes.length > 0) {
+          for (const node of mutation.removedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node;
+              try {
+                const className = safeGetClassName(element);
+                if (className.includes('ad') || className.includes('skip')) {
+                  return true;
+                }
+              } catch (e) {}
+            }
           }
         }
+        
+        if (mutation.attributeName && (mutation.attributeName === 'class' || 
+            mutation.attributeName === 'style' || 
+            mutation.attributeName === 'aria-label' || 
+            mutation.attributeName === 'role')) {
+          return true;
+        }
+        
+        return false;
+      } catch (e) {
+        return false;
       }
-      
-      if (mutation.attributeName && (mutation.attributeName === 'class' || 
-          mutation.attributeName === 'style' || 
-          mutation.attributeName === 'aria-label' || 
-          mutation.attributeName === 'role')) {
-        return true;
-      }
-      
-      return false;
     }
 
     startPeriodicDetection() {
